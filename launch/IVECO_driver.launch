@@ -1,0 +1,12 @@
+<!-- -->
+<launch>
+
+	<arg name="can_port" default="/dev/ttyUSB0"/>   <!--底层can分析仪-->
+
+	<node name="base_control_node" pkg="iveco_drive" type="base_control_node" output="screen">
+		<param name ="obd_can_port_name" value="$(arg can_port)"/>
+		<param name ="max_steering_speed" value="2.0"/> <!--前后帧转角最大差值 -->
+		<param name ="steering_offset" value="20"/>     <!-- -->
+	</node>
+
+</launch>
