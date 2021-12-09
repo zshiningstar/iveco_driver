@@ -106,6 +106,7 @@ private:
 	float steer_angle;
 	float curGearState;
 	float curMotorTorque;
+	float curSpeed;
 	
 	//刹车状态信息
 	float curDeceleration;
@@ -170,7 +171,7 @@ bool BaseControl::init(int argc,char**argv)
 	nh_private.param<bool>("default_drive_gear", default_drive_gear_, true);//是否默认为前进档
 	
 	assert(!obd_can_port_name_.empty());
-	assert(max_steering_speed_>0);
+//	assert(max_steering_speed_>0);
 
 	vehicleCtrlCmd_sub_ = nh.subscribe("/VehicleCtrlCmd",1,&BaseControl::vehicleCtrlCmd_callback,this);
 	vehicleState_pub_ = nh.advertise<driverless_common::VehicleState>("/VehicleState",10);
@@ -192,7 +193,7 @@ bool BaseControl::init(int argc,char**argv)
 	can2serial.setCanFilter_alone(0x03,ID_STATE3); usleep(10000);
 	can2serial.setCanFilter_alone(0x04,ID_STATE4); usleep(10000);
 	*/
-	can2serial.configBaudrate(500);
+	can2serial.configBaudrate(250);
 	
 	can2serial.StartReading();
 		
@@ -206,6 +207,7 @@ bool BaseControl::init(int argc,char**argv)
 
 void BaseControl::run()
 {
+//    std::cout << 1111111 << std::endl;
 	boost::thread parse_msg(boost::bind(&BaseControl::parse_CanMsg,this)); 
 	ros::spin();
 }
@@ -220,7 +222,7 @@ void BaseControl::parse_CanMsg()
 		usleep(3000);
 		if(!can2serial.getCanMsg(canMsg))
 		{
-			//ROS_INFO("nothing....");
+//			ROS_INFO("nothing....");
 			continue;
 		}
 			
@@ -228,16 +230,19 @@ void BaseControl::parse_CanMsg()
 //		can2serial.showCanMsg(canMsg);
 		
 		bool key = true;
-			
+//	    std::cout << 2222222 << std::endl;
 		switch(canMsg.ID)
 		{
 			case ID_STATE_VCU:
-				curMotorTorque = canMsg.data[1] * 256 + canMsg.data[0] - 1000;
+				curMotorTorque = canMsg.data[1] * 256 + canMsg.data[0]- 2000;
+				vehicleState_.curMotorTorque = curMotorTorque;
 				curGearState = canMsg.data[2]&0x03;
+				curSpeed = ((canMsg.data[4]&0x1f << 8) + canMsg.data[3]);
+				vehicleState_.speed = curSpeed;
 				curControlMode = canMsg.data[5];//协议中的字节5与6反了
 				vehicleState_.driverless = (curControlMode == 0x01) ? true : false;
 				if(curGearState == 0x0)
-					vehicleState_.gear = driverless_common::VehicleState::GEAR_PAKING;
+					vehicleState_.gear = driverless_common::VehicleState::GEAR_NEUTRAL;
 				else if(curGearState == 0x1)
 					vehicleState_.gear = driverless_common::VehicleState::GEAR_DRIVE;
 				else if(curGearState == 0x2)
@@ -268,7 +273,7 @@ void BaseControl::parse_CanMsg()
 				if(wheel_speed_RL_valid==false) {i++; speed += wheel_speed_RL;}
 				if(wheel_speed_RR_valid==false) {i++; speed += wheel_speed_RR;}
 				
-				vehicleState_.speed = speed/i; //km/h
+				//vehicleState_.speed = speed/i; //km/h
 				}
 				break;
 	
@@ -283,8 +288,11 @@ void BaseControl::parse_CanMsg()
 			
 			case ID_STATE_EBS:
 				curDeceleration = canMsg.data[0];
+				vehicleState_.curDeceleration = curDeceleration;
 				curBrakePedal0penPercentage = canMsg.data[1];
+				vehicleState_.curBrakePedal0penPercentage = curBrakePedal0penPercentage;
 				curEPBState = canMsg.data[2]&0x01;
+				std::cout << "curEPBState:" << int(curEPBState) << std::endl;
 				vehicleState_.hand_brake = curEPBState;
 				curEBSState = (canMsg.data[2] >>1)&0x07; 
 				break;
@@ -297,6 +305,7 @@ void BaseControl::parse_CanMsg()
 				key = false;
 				break;
 		}
+//		std::cout << key << std::endl;
 		if(key)
 			can2serial.showCanMsg(canMsg);
 	}
@@ -349,7 +358,7 @@ void BaseControl::vehicleCtrlCmd_callback(const driverless_common::VehicleCtrlCm
 	if(set_driverless)
 		canMsg_cmd3_.data[2] = 0x1;
 	else
-		canMsg_cmd3_.data[2] = 0x2;//手动
+		canMsg_cmd3_.data[2] = 0x0;//手动
 	can2serial.sendCanMsg(canMsg_cmd3_);
 	
 	//BCM相关指令(开关)
